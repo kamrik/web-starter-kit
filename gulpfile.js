@@ -27,6 +27,10 @@ var runSequence = require('run-sequence');
 var browserSync = require('browser-sync');
 var pagespeed = require('psi');
 var reload = browserSync.reload;
+var fs = require('fs');
+var path = require('path');
+var cordovaLib = require('cordova-lib');
+var cdv = cordovaLib.cordova.raw;
 
 var AUTOPREFIXER_BROWSERS = [
   'ie >= 10',
@@ -136,7 +140,7 @@ gulp.task('html', function () {
 });
 
 // Clean Output Directory
-gulp.task('clean', del.bind(null, ['.tmp', 'dist']));
+gulp.task('clean', del.bind(null, ['.tmp', 'dist', 'cordova']));
 
 // Watch Files For Changes & Reload
 gulp.task('serve', ['styles'], function () {
@@ -187,6 +191,44 @@ gulp.task('pagespeed', pagespeed.bind(null, {
   url: 'https://example.com',
   strategy: 'mobile'
 }));
+
+
+
+////// CORDOVA TASKS
+var cdvDir = path.join(__dirname, 'cordova');
+var cordovaPlugins = ['org.apache.cordova.file'];
+
+// Assuming the apk is already built, run it on device.
+// For emulator, replace --device with --emulator.
+gulp.task('runapk', function() {
+    process.chdir(cdvDir);
+    return cdv.run({platforms: ['android'], options:['--device', '--nobuild']});
+});
+
+// Create the cordova project under ./cordova/ This task doesn't use "cordova create",
+// instead it just links config.xml and www/
+gulp.task('buildapk', ['default'], function() {
+
+    fs.mkdirSync(cdvDir);
+    process.chdir(cdvDir);
+
+    // If we start with manifest.json, config.xml should be generated
+    // from the maifest using gulp style processing like:
+    // gulp.src('manifest.json')
+    //   .pipe(ccaManifestJson2ConfigXml())
+    //   .pipe(gulp.dest('cordova'));
+    fs.symlinkSync(path.join('..','cordova_config.xml'), 'config.xml');
+    fs.symlinkSync(path.join('..', 'dist'), 'www');
+
+    // Must first add plugins then platforms. If adding platforms first,
+    // cordova fails expecting to find the plugins directory.
+    // TODO: generate platform list based on package.json
+    return cdv.plugins('add', cordovaPlugins)
+    .then(function() {
+        return cdv.platform('add', [path.join(__dirname, 'node_modules', 'cordova-android')]);
+    })
+    .then(cdv.build);
+});
 
 // Load custom tasks from the `tasks` directory
 try { require('require-dir')('tasks'); } catch (err) {}
